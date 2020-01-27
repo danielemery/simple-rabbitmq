@@ -1,0 +1,25 @@
+{
+  "name": "@danielemeryau/simple-rabbitmq",
+  "version": "0.0.1",
+  "description": "Simple wrapper for RabbitMQ for use in my personal projects",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danielemery/simple-rabbitmq.git"
+  },
+  "author": "Daniel Emery <danielremery@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/danielemery/simple-rabbitmq/issues"
+  },
+  "homepage": "https://github.com/danielemery/simple-rabbitmq#readme",
+  "dependencies": {
+    "amqplib": "^0.5.5"
+  },
+  "devDependencies": {
+    "@types/node": "^13.5.0"
+  }
+}
