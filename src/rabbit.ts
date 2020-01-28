@@ -1,4 +1,4 @@
-import amqp, { Connection, Channel } from 'amqplib';
+import amqp, { Connection, ConfirmChannel } from 'amqplib';
 
 export interface IRabbitOptions {
   host: string;
@@ -9,7 +9,7 @@ export interface IRabbitOptions {
 
 export default class Rabbit<T> {
   connection?: Connection;
-  channel?: Channel;
+  channel?: ConfirmChannel;
   options: IRabbitOptions;
 
   constructor(options: IRabbitOptions) {
@@ -22,7 +22,7 @@ export default class Rabbit<T> {
     console.log(`Connecting to RabbitMQ @ ${rabbitUrl}`);
     this.connection = await amqp.connect(rabbitUrl);
     console.log('Connection to RabbitMQ established successfully');
-    this.channel = await this.connection.createChannel();
+    this.channel = await this.connection.createConfirmChannel();
     console.log('RabbitMQ channel opened');
   }
 
@@ -44,17 +44,28 @@ export default class Rabbit<T> {
     routingKey: string = '',
     payload: T,
   ): Promise<boolean> {
-    if (!this.channel) {
-      throw new Error('No open rabbit connection!');
-    }
     try {
-      await this.channel.assertExchange(exchange, 'topic', { durable: false });
-      const result = await this.channel.publish(
-        exchange,
-        routingKey,
-        Buffer.from(JSON.stringify(payload)),
-      );
-      return result;
+      return new Promise(async (resolve, reject) => {
+        if (!this.channel) {
+          throw new Error('No open rabbit connection!');
+        }
+        await this.channel.assertExchange(exchange, 'topic', {
+          durable: false,
+        });
+        this.channel.publish(
+          exchange,
+          routingKey,
+          Buffer.from(JSON.stringify(payload)),
+          undefined,
+          err => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve(true);
+            }
+          },
+        );
+      });
     } catch (err) {
       console.error(err);
       return false;
@@ -80,5 +91,19 @@ export default class Rabbit<T> {
       } else if (onClose) onClose();
     });
     return queue.queue;
+  }
+
+  public async unlisten(queue: string) {
+    if (!this.channel) {
+      throw new Error('No open rabbit connection!');
+    }
+    await this.channel.deleteQueue(queue);
+  }
+
+  public async deleteExchange(exchange: string) {
+    if (!this.channel) {
+      throw new Error('No open rabbit connection!');
+    }
+    await this.channel.deleteExchange(exchange);
   }
 }
