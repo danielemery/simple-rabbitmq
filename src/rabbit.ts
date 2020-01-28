@@ -39,18 +39,22 @@ export default class Rabbit<T> {
     }
   }
 
-  public async publish(exchange: string, routingKey: string = '', payload: T) {
+  public async publish(
+    exchange: string,
+    routingKey: string = '',
+    payload: T,
+  ): Promise<boolean> {
     if (!this.channel) {
       throw new Error('No open rabbit connection!');
     }
     try {
-      this.channel.assertExchange(exchange, 'topic', { durable: false });
-      this.channel.publish(
+      await this.channel.assertExchange(exchange, 'topic', { durable: false });
+      const result = await this.channel.publish(
         exchange,
         routingKey,
         Buffer.from(JSON.stringify(payload)),
       );
-      return true;
+      return result;
     } catch (err) {
       console.error(err);
       return false;
@@ -66,9 +70,9 @@ export default class Rabbit<T> {
     if (!this.channel) {
       throw new Error('No open rabbit connection!');
     }
-    this.channel.assertExchange(exchange, 'topic', { durable: false });
+    await this.channel.assertExchange(exchange, 'topic', { durable: false });
     const queue = await this.channel.assertQueue('', { exclusive: true });
-    this.channel.bindQueue(queue.queue, exchange, routingKey);
+    await this.channel.bindQueue(queue.queue, exchange, routingKey);
     this.channel.consume(queue.queue, message => {
       if (message) {
         const data = JSON.parse(message.content.toString());
