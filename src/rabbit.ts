@@ -1,41 +1,41 @@
 import amqp, { Connection, Channel } from 'amqplib';
 
-export interface IRabbitOptions {
-  host: string;
-  port: string;
-  user: string;
-  password: string;
-}
+import IRabbitOptions from './IRabbitOptions';
+import ILogger from './ILogger';
+import ConsoleLogger from './consoleLogger';
 
 export default class Rabbit<T> {
   connection?: Connection;
   channel?: Channel;
   options: IRabbitOptions;
+  logger: ILogger;
 
-  constructor(options: IRabbitOptions) {
+  constructor(options: IRabbitOptions, logger: ILogger = new ConsoleLogger()) {
     this.options = options;
+    this.logger = logger;
   }
 
   public async connect() {
     const { user, password, host, port } = this.options;
     const rabbitUrl = `amqp://${user}:${password}@${host}:${port}`;
-    console.log(`Connecting to RabbitMQ @ ${rabbitUrl}`);
+    this.logger.info(`Connecting to RabbitMQ @ ${rabbitUrl}`);
     this.connection = await amqp.connect(rabbitUrl);
-    console.log('Connection to RabbitMQ established successfully');
+    this.logger.info('Connection to RabbitMQ established successfully');
     this.channel = await this.connection.createChannel();
-    console.log('RabbitMQ channel opened');
+    this.logger.info('RabbitMQ channel opened');
   }
 
   public async disconnect() {
     try {
       if (this.connection) {
         await this.connection.close();
-        console.log('RabbitMQ connection closed successfully');
+        this.logger.info('RabbitMQ connection closed successfully');
       } else {
-        console.log('No open RabbitMQ connection to close');
+        this.logger.info('No open RabbitMQ connection to close');
       }
     } catch (e) {
-      console.log('Error closing RabbitMQ connection and/or channel', e);
+      this.logger.error('Error closing RabbitMQ connection and/or channel', e);
+      throw e;
     }
   }
 
@@ -52,7 +52,7 @@ export default class Rabbit<T> {
       );
       return true;
     } catch (err) {
-      console.error(err);
+      this.logger.error(err);
       return false;
     }
   }
