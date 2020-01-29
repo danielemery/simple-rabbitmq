@@ -1,0 +1,10 @@
+version: '3'
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - 8080:15672
+      - 5672:5672
+    environment:
+      RABBITMQ_DEFAULT_USER: simple-rabbitmq
+      RABBITMQ_DEFAULT_PASS: simple-rabbitmq
