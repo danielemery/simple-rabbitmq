@@ -1,13 +1,13 @@
 import { flatMap } from 'rxjs/operators';
-import { Rabbit } from '..';
+import Rabbit from './rabbit';
 
 export default function publishObservable<T>(
-  rabbit: Rabbit<T>,
+  rabbit: Rabbit,
   exchange: string,
   routingKey: string = '',
 ) {
   return flatMap(async (toPublish: T) => {
-    const result = await rabbit.publish(exchange, routingKey, toPublish);
+    const result = await rabbit.publish<T>(exchange, routingKey, toPublish);
     if (result) {
       return toPublish;
     } else {

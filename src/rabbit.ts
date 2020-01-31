@@ -4,7 +4,7 @@ import IRabbitOptions from './IRabbitOptions';
 import ILogger from './ILogger';
 import ConsoleLogger from './consoleLogger';
 
-export default class Rabbit<T> {
+export default class Rabbit {
   connection?: Connection;
   channel?: ConfirmChannel;
   options: IRabbitOptions;
@@ -17,7 +17,7 @@ export default class Rabbit<T> {
 
   public async connect() {
     if (this.connection) {
-      throw new Error("Connection already open on this rabbit instance.");
+      throw new Error('Connection already open on this rabbit instance.');
     }
     const { user, password, host, port } = this.options;
     const rabbitUrl = `amqp://${user}:${password}@${host}:${port}`;
@@ -42,7 +42,7 @@ export default class Rabbit<T> {
     }
   }
 
-  public async publish(
+  public async publish<T>(
     exchange: string,
     routingKey: string = '',
     payload: T,
@@ -75,7 +75,7 @@ export default class Rabbit<T> {
     }
   }
 
-  public async listen(
+  public async listen<T>(
     exchange: string,
     routingKey: string = '',
     onMessage: (message: T) => void,

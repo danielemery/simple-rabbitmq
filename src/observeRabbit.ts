@@ -7,13 +7,13 @@ export interface IRabbitObserver<T> {
 }
 
 export default async function<T>(
-  rabbit: Rabbit<T>,
+  rabbit: Rabbit,
   exchange: string,
   routingKey?: string,
 ): Promise<IRabbitObserver<T>> {
   const subject = new Subject<T>();
 
-  const rabbitPromise = rabbit.listen(
+  const rabbitPromise = rabbit.listen<T>(
     exchange,
     routingKey,
     message => {
