@@ -1,21 +1,36 @@
-import { Observable } from 'rxjs';
+import { Observable, Subject } from 'rxjs';
 import Rabbit from './rabbit';
 
-export default function<T>(
+export interface IRabbitObserver<T> {
+  observable: Observable<T>;
+  cancel: () => void;
+}
+
+export default async function<T>(
   rabbit: Rabbit<T>,
   exchange: string,
   routingKey?: string,
-): Observable<T> {
-  return new Observable(observer => {
-    rabbit.listen(
-      exchange,
-      routingKey,
-      message => {
-        observer.next(message);
-      },
-      () => {
-        observer.complete();
-      },
-    );
-  });
+): Promise<IRabbitObserver<T>> {
+  const subject = new Subject<T>();
+
+  const rabbitPromise = rabbit.listen(
+    exchange,
+    routingKey,
+    message => {
+      subject.next(message);
+    },
+    () => {
+      subject.complete();
+    },
+  );
+
+  await rabbitPromise;
+
+  return {
+    observable: subject,
+    cancel: async () => {
+      const rabbitQueue = await rabbitPromise;
+      rabbit.unlisten(rabbitQueue);
+    },
+  };
 }

@@ -1,4 +1,14 @@
-import { Rabbit } from '../index';
+import { Rabbit, publishObservable } from '../index';
+import { range } from 'rxjs';
+import { map } from 'rxjs/operators';
+import observeRabbit from '../src/observeRabbit';
+
+function printObservable(message: string) {
+  return map(value => {
+    console.log(`${message} ${JSON.stringify(value)}.`);
+    return value;
+  });
+}
 
 async function runIntegrationTest() {
   const rabbit = new Rabbit({
@@ -8,29 +18,35 @@ async function runIntegrationTest() {
     password: 'simple-rabbitmq',
   });
   await rabbit.connect();
-  const listener = await rabbit.listen(
-    'test_exchange',
-    '',
-    message => {
-      console.log(`Recieved message ${JSON.stringify(message)}.`);
-    },
-    () => {
-      console.log('Listener cancelled');
-    },
-  );
-  for (let i = 0; i < 10; i++) {
-    console.log(`Publishing Message ${i}`);
-    await rabbit.publish('test_exchange', '', {
-      text: `Test Message ${i}`,
-    });
-  }
-  await rabbit.unlisten(listener);
-  for (let i = 0; i < 10; i++) {
-    console.log(`Publishing Message ${i}`);
-    await rabbit.publish('test_exchange', '', {
-      text: `Test Message ${i}`,
-    });
-  }
+
+  const { observable, cancel } = await observeRabbit(rabbit, 'test_exchange');
+  console.log('Now Listening');
+
+  observable.pipe(printObservable('Recieved Message')).subscribe();
+
+  await range(0, 10)
+    .pipe(
+      map(num => ({
+        text: `Test Message ${num}`,
+      })),
+      printObservable('Sent Message'),
+      publishObservable(rabbit, 'test_exchange'),
+    )
+    .toPromise();
+
+  await cancel();
+  console.log('No Longer Listening');
+
+  await range(0, 10)
+    .pipe(
+      map(num => ({
+        text: `Second Test Message ${num}`,
+      })),
+      printObservable('Sent Message'),
+      publishObservable(rabbit, 'test_exchange'),
+    )
+    .toPromise();
+
   await rabbit.deleteExchange('test_exchange');
   await rabbit.disconnect();
   return;
