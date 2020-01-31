@@ -16,6 +16,9 @@ export default class Rabbit<T> {
   }
 
   public async connect() {
+    if (this.connection) {
+      throw new Error("Connection already open on this rabbit instance.");
+    }
     const { user, password, host, port } = this.options;
     const rabbitUrl = `amqp://${user}:${password}@${host}:${port}`;
     this.logger.info(`Connecting to RabbitMQ @ ${rabbitUrl}`);
