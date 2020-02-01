@@ -112,7 +112,7 @@ export default class Rabbit<T> {
     }
     await this.channel.assertExchange(exchange, 'topic', { durable: false });
     const createdQueue = await this.channel.assertQueue(queue, {
-      exclusive: queue.length > 0,
+      exclusive: queue.length === 0,
       durable: queue.length > 0,
     });
     await this.channel.bindQueue(createdQueue.queue, exchange, routingKey);
