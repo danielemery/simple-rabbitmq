@@ -11,6 +11,7 @@ async function runIntegrationTest() {
   const listener = await rabbit.listen(
     'test_exchange',
     '',
+    '',
     message => {
       console.log(`Recieved message ${JSON.stringify(message)}.`);
     },
