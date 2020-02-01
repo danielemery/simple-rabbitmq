@@ -3,6 +3,7 @@ import amqp, { Connection, ConfirmChannel } from 'amqplib';
 import IRabbitOptions from './IRabbitOptions';
 import ILogger from './ILogger';
 import ConsoleLogger from './consoleLogger';
+import { IQueueReference } from './IQueueReference';
 
 export default class Rabbit {
   connection?: Connection;
@@ -15,6 +16,11 @@ export default class Rabbit {
     this.logger = logger;
   }
 
+  /**
+   * Establish a connection and channel with the configured rabbit service.
+   *
+   * Note: If already connected this will throw.
+   */
   public async connect() {
     if (this.connection) {
       throw new Error('Connection already open on this rabbit instance.');
@@ -28,6 +34,9 @@ export default class Rabbit {
     this.logger.info('RabbitMQ channel opened');
   }
 
+  /**
+   * Disconnect from the connected rabbit service.
+   */
   public async disconnect() {
     try {
       if (this.connection) {
@@ -42,6 +51,14 @@ export default class Rabbit {
     }
   }
 
+  /**
+   * Publish a message to the connected rabbit service.
+   * @param exchange The exchange to publish the message.
+   * @param routingKey Optional routing key to route the message.
+   * @param payload The message payload.
+   *
+   * Note: If not connected this will throw.
+   */
   public async publish<T>(
     exchange: string,
     routingKey: string = '',
@@ -75,32 +92,57 @@ export default class Rabbit {
     }
   }
 
+  /**
+   * Listen to the connected rabbit service.
+   * @param exchange The exchange to subscribe to.
+   * @param routingKey Optional routing key to select messages.
+   * @param queue Optional queue name to listen to, if not provided a new temporary exclusive queue will be created.
+   * @param onMessage Callback fired when a message is recieved.
+   * @param onClose Callback fired when the channel/connection is closed.
+   */
   public async listen<T>(
     exchange: string,
     routingKey: string = '',
+    queue: string = '',
     onMessage: (message: T) => void,
     onClose: () => void,
-  ) {
+  ): Promise<IQueueReference> {
     if (!this.channel) {
       throw new Error('No open rabbit connection!');
     }
     await this.channel.assertExchange(exchange, 'topic', { durable: false });
-    const queue = await this.channel.assertQueue('', { exclusive: true });
-    await this.channel.bindQueue(queue.queue, exchange, routingKey);
-    this.channel.consume(queue.queue, message => {
+    const createdQueue = await this.channel.assertQueue(queue, {
+      exclusive: queue.length > 0,
+      durable: queue.length > 0,
+    });
+    await this.channel.bindQueue(createdQueue.queue, exchange, routingKey);
+    this.channel.consume(createdQueue.queue, message => {
       if (message) {
         const data = JSON.parse(message.content.toString());
         onMessage(data);
       } else if (onClose) onClose();
     });
-    return queue.queue;
+    return {
+      name: createdQueue.queue,
+      generated: queue.length > 0,
+      exchange,
+      routingKey,
+    };
   }
 
-  public async unlisten(queue: string) {
+  public async unlisten(queue: IQueueReference) {
     if (!this.channel) {
       throw new Error('No open rabbit connection!');
     }
-    await this.channel.deleteQueue(queue);
+    if (queue.generated) {
+      await this.channel.deleteQueue(queue.name);
+    } else {
+      await this.channel.unbindQueue(
+        queue.name,
+        queue.exchange,
+        queue.routingKey,
+      );
+    }
   }
 
   public async deleteExchange(exchange: string) {
