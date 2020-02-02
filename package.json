@@ -1,6 +1,6 @@
 {
   "name": "@danielemeryau/simple-rabbitmq",
-  "version": "0.0.10-publish-observable.3",
+  "version": "0.1.0",
   "description": "Simple wrapper for RabbitMQ for use in my personal projects",
   "main": "dist/index.js",
   "scripts": {
