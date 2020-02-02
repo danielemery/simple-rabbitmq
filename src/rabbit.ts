@@ -29,7 +29,9 @@ export default class Rabbit {
     }
     const { user, password, host, port } = this.options;
     const rabbitUrl = `amqp://${user}:${password}@${host}:${port}`;
-    this.logger.info(`Connecting to RabbitMQ @ amqp://${user}:***@${host}:${port}`);
+    this.logger.info(
+      `Connecting to RabbitMQ @ amqp://${user}:***@${host}:${port}`,
+    );
     this.connection = await amqp.connect(rabbitUrl);
     this.logger.info('Connection to RabbitMQ established successfully');
     this.channel = await this.connection.createConfirmChannel();
@@ -113,10 +115,20 @@ export default class Rabbit {
       throw new Error('No open rabbit connection!');
     }
     const { queue = '', routingKey = '', requiresAcknowledge = true } = options;
+    const exclusive = queue.length === 0;
+    const generated = queue.length === 0;
+
+    this.logger.info('Listening to queue', {
+      queue,
+      routingKey,
+      requiresAcknowledge,
+      exclusive,
+      generated,
+    });
+
     await this.channel.assertExchange(exchange, 'topic', { durable: false });
     const createdQueue = await this.channel.assertQueue(queue, {
-      exclusive: queue.length === 0,
-      durable: queue.length > 0,
+      exclusive,
     });
     await this.channel.bindQueue(createdQueue.queue, exchange, routingKey);
     const { consumerTag } = await this.channel.consume(
@@ -143,7 +155,7 @@ export default class Rabbit {
     );
     return {
       name: createdQueue.queue,
-      generated: queue.length > 0,
+      generated,
       exchange,
       routingKey,
       consumerTag,
