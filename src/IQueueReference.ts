@@ -3,4 +3,5 @@ export interface IQueueReference {
   generated: boolean;
   exchange: string;
   routingKey: string;
+  consumerTag: string;
 }

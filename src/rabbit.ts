@@ -116,17 +116,21 @@ export default class Rabbit {
       durable: queue.length > 0,
     });
     await this.channel.bindQueue(createdQueue.queue, exchange, routingKey);
-    this.channel.consume(createdQueue.queue, message => {
-      if (message) {
-        const data = JSON.parse(message.content.toString());
-        onMessage(data);
-      } else if (onClose) onClose();
-    });
+    const { consumerTag } = await this.channel.consume(
+      createdQueue.queue,
+      message => {
+        if (message) {
+          const data = JSON.parse(message.content.toString());
+          onMessage(data);
+        } else if (onClose) onClose();
+      },
+    );
     return {
       name: createdQueue.queue,
       generated: queue.length > 0,
       exchange,
       routingKey,
+      consumerTag,
     };
   }
 
@@ -137,11 +141,7 @@ export default class Rabbit {
     if (queue.generated) {
       await this.channel.deleteQueue(queue.name);
     } else {
-      await this.channel.unbindQueue(
-        queue.name,
-        queue.exchange,
-        queue.routingKey,
-      );
+      await this.channel.cancel(queue.consumerTag);
     }
   }
 
