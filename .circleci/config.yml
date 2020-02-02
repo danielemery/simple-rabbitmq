@@ -32,7 +32,7 @@ jobs:
       - run:
           name: Deploy to NPM
           command: |
-            npm publish --access public --beta
+            npm publish --access --tag beta
 
   publish:
     docker:
