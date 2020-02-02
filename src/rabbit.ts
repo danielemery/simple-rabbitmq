@@ -1,9 +1,11 @@
 import amqp, { Connection, ConfirmChannel } from 'amqplib';
 
-import IRabbitOptions from './IRabbitOptions';
-import ILogger from './ILogger';
-import ConsoleLogger from './consoleLogger';
-import { IQueueReference } from './IQueueReference';
+import IRabbitOptions from './rabbit-options';
+import ILogger from './logger';
+import ConsoleLogger from './console-logger';
+import { IQueueReference } from './queue-reference';
+import Envelope from './envelope';
+import IListenOptions from './listen-options';
 
 export default class Rabbit {
   connection?: Connection;
@@ -102,14 +104,14 @@ export default class Rabbit {
    */
   public async listen<T>(
     exchange: string,
-    routingKey: string = '',
-    queue: string = '',
-    onMessage: (message: T) => void,
+    options: IListenOptions,
+    onMessage: (message: Envelope<T>) => void,
     onClose: () => void,
   ): Promise<IQueueReference> {
     if (!this.channel) {
       throw new Error('No open rabbit connection!');
     }
+    const { queue = '', routingKey = '', requiresAcknowledge = true } = options;
     await this.channel.assertExchange(exchange, 'topic', { durable: false });
     const createdQueue = await this.channel.assertQueue(queue, {
       exclusive: queue.length === 0,
@@ -121,8 +123,21 @@ export default class Rabbit {
       message => {
         if (message) {
           const data = JSON.parse(message.content.toString());
-          onMessage(data);
+          onMessage({
+            message: data,
+            acknowledge: requiresAcknowledge
+              ? () => {
+                  if (!this.channel) {
+                    throw new Error('No open rabbit connection!');
+                  }
+                  this.channel.ack(message);
+                }
+              : undefined,
+          });
         } else if (onClose) onClose();
+      },
+      {
+        noAck: !requiresAcknowledge,
       },
     );
     return {

@@ -1,13 +1,28 @@
 import { Rabbit, publishObservable } from '../index';
 import { range } from 'rxjs';
-import { map } from 'rxjs/operators';
-import observeRabbit from '../src/observeRabbit';
+import { map, flatMap } from 'rxjs/operators';
+import observeRabbit from '../src/observe-rabbit';
+import Envelope from '../src/envelope';
 
-function printObservable(message: string) {
-  return map(value => {
+function printObservable<T>(message: string) {
+  return map<T, T>(value => {
     console.log(`${message} ${JSON.stringify(value)}.`);
     return value;
   });
+}
+
+function acknowledgeObservable() {
+  return flatMap(async (envelope: Envelope<any>) => {
+    if(!envelope.acknowledge) {
+      throw new Error('Cannot acknowledge');
+    }
+    await envelope.acknowledge();
+    return envelope.message;
+  });
+}
+
+interface ITestMessage {
+  text: string;
 }
 
 async function runIntegrationTest() {
@@ -19,18 +34,27 @@ async function runIntegrationTest() {
   });
   await rabbit.connect();
 
-  const { observable, cancel } = await observeRabbit(rabbit, 'test_exchange');
+  const { observable, cancel } = await observeRabbit<ITestMessage>(
+    rabbit,
+    'test_exchange',
+    {},
+  );
   console.log('Now Listening');
 
-  observable.pipe(printObservable('Recieved Message')).subscribe();
+  observable
+    .pipe(
+      acknowledgeObservable(),
+      printObservable<ITestMessage>('Recieved Message'),
+    )
+    .subscribe();
 
   await range(0, 10)
     .pipe(
       map(num => ({
         text: `Test Message ${num}`,
       })),
-      printObservable('Sent Message'),
-      publishObservable(rabbit, 'test_exchange'),
+      printObservable<ITestMessage>('Sent Message'),
+      publishObservable<ITestMessage>(rabbit, 'test_exchange'),
     )
     .toPromise();
 
@@ -42,8 +66,8 @@ async function runIntegrationTest() {
       map(num => ({
         text: `Second Test Message ${num}`,
       })),
-      printObservable('Sent Message'),
-      publishObservable(rabbit, 'test_exchange'),
+      printObservable<ITestMessage>('Sent Message'),
+      publishObservable<ITestMessage>(rabbit, 'test_exchange'),
     )
     .toPromise();
 

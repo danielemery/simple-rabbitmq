@@ -1,4 +1,4 @@
-import ILogger from './ILogger';
+import ILogger from './logger';
 
 export default class ConsoleLogger implements ILogger {
   private log(message: string, context?: any) {
