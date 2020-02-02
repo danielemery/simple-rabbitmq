@@ -1,6 +1,6 @@
 {
   "name": "@danielemeryau/simple-rabbitmq",
-  "version": "0.1.0",
+  "version": "0.1.1-envelope.0",
   "description": "Simple wrapper for RabbitMQ for use in my personal projects",
   "main": "dist/index.js",
   "scripts": {
