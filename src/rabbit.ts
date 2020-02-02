@@ -29,7 +29,7 @@ export default class Rabbit {
     }
     const { user, password, host, port } = this.options;
     const rabbitUrl = `amqp://${user}:${password}@${host}:${port}`;
-    this.logger.info(`Connecting to RabbitMQ @ ${rabbitUrl}`);
+    this.logger.info(`Connecting to RabbitMQ @ amqp://${user}:***@${host}:${port}`);
     this.connection = await amqp.connect(rabbitUrl);
     this.logger.info('Connection to RabbitMQ established successfully');
     this.channel = await this.connection.createConfirmChannel();
@@ -43,6 +43,7 @@ export default class Rabbit {
     try {
       if (this.connection) {
         await this.connection.close();
+        this.connection = undefined;
         this.logger.info('RabbitMQ connection closed successfully');
       } else {
         this.logger.info('No open RabbitMQ connection to close');
@@ -149,6 +150,7 @@ export default class Rabbit {
     };
   }
 
+  /** Stop listening to the queue identified by the given reference. */
   public async unlisten(queue: IQueueReference) {
     if (!this.channel) {
       throw new Error('No open rabbit connection!');
@@ -160,10 +162,19 @@ export default class Rabbit {
     }
   }
 
+  /** Delete the exchange with the given name. */
   public async deleteExchange(exchange: string) {
     if (!this.channel) {
       throw new Error('No open rabbit connection!');
     }
     await this.channel.deleteExchange(exchange);
+  }
+
+  /** Delete the queue with the given name. */
+  public async deleteQueue(queue: string) {
+    if (!this.channel) {
+      throw new Error('No open rabbit connection!');
+    }
+    await this.channel.deleteQueue(queue);
   }
 }

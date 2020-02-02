@@ -1,29 +1,6 @@
-import { Rabbit, publishObservable } from '../index';
-import { range } from 'rxjs';
-import { map, flatMap } from 'rxjs/operators';
-import observeRabbit from '../src/observe-rabbit';
-import Envelope from '../src/envelope';
-
-function printObservable<T>(message: string) {
-  return map<T, T>(value => {
-    console.log(`${message} ${JSON.stringify(value)}.`);
-    return value;
-  });
-}
-
-function acknowledgeObservable() {
-  return flatMap(async (envelope: Envelope<any>) => {
-    if(!envelope.acknowledge) {
-      throw new Error('Cannot acknowledge');
-    }
-    await envelope.acknowledge();
-    return envelope.message;
-  });
-}
-
-interface ITestMessage {
-  text: string;
-}
+import { Rabbit } from '../index';
+import ackTest from './ack-test';
+import noAckTest from './no-ack-test';
 
 async function runIntegrationTest() {
   const rabbit = new Rabbit({
@@ -32,47 +9,12 @@ async function runIntegrationTest() {
     user: 'simple-rabbitmq',
     password: 'simple-rabbitmq',
   });
-  await rabbit.connect();
 
-  const { observable, cancel } = await observeRabbit<ITestMessage>(
-    rabbit,
-    'test_exchange',
-    {},
-  );
-  console.log('Now Listening');
+  console.log('Testing Acknowledge Case');
+  await ackTest(rabbit);
+  console.log('Testing No Acknowledge Case');
+  await noAckTest(rabbit);
 
-  observable
-    .pipe(
-      acknowledgeObservable(),
-      printObservable<ITestMessage>('Recieved Message'),
-    )
-    .subscribe();
-
-  await range(0, 10)
-    .pipe(
-      map(num => ({
-        text: `Test Message ${num}`,
-      })),
-      printObservable<ITestMessage>('Sent Message'),
-      publishObservable<ITestMessage>(rabbit, 'test_exchange'),
-    )
-    .toPromise();
-
-  await cancel();
-  console.log('No Longer Listening');
-
-  await range(0, 10)
-    .pipe(
-      map(num => ({
-        text: `Second Test Message ${num}`,
-      })),
-      printObservable<ITestMessage>('Sent Message'),
-      publishObservable<ITestMessage>(rabbit, 'test_exchange'),
-    )
-    .toPromise();
-
-  await rabbit.deleteExchange('test_exchange');
-  await rabbit.disconnect();
   return;
 }
 
