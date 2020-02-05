@@ -114,7 +114,11 @@ export default class Rabbit {
     if (!this.channel) {
       throw new Error('No open rabbit connection!');
     }
-    const { queue = '', routingKey = '', requiresAcknowledge = true } = options;
+    const {
+      queue = '',
+      routingKey = '',
+      requiresAcknowledge = queue.length > 0,
+    } = options;
     const exclusive = queue.length === 0;
     const generated = queue.length === 0;
 
@@ -139,11 +143,11 @@ export default class Rabbit {
           onMessage({
             message: data,
             acknowledge: requiresAcknowledge
-              ? () => {
+              ? async () => {
                   if (!this.channel) {
                     throw new Error('No open rabbit connection!');
                   }
-                  this.channel.ack(message);
+                  await this.channel.ack(message);
                 }
               : undefined,
           });
