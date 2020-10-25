@@ -19,14 +19,14 @@ export default async function noAckTest(rabbit: Rabbit) {
 
   observable
     .pipe(
-      map(envelope => envelope.message),
+      map((envelope) => envelope.message),
       printObservable<ITestMessage>('Recieved Message'),
     )
     .subscribe();
 
   await range(0, 10)
     .pipe(
-      map(num => ({
+      map((num) => ({
         text: `Test Message ${num}`,
       })),
       printObservable<ITestMessage>('Sent Message'),

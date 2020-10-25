@@ -6,6 +6,13 @@ import ConsoleLogger from './console-logger';
 import { IQueueReference } from './queue-reference';
 import Envelope from './envelope';
 import IListenOptions from './listen-options';
+import { wait } from './wait';
+
+export interface IConnectOptions {
+  retry?: boolean;
+  retryWait?: number;
+  timeoutMillis?: number;
+}
 
 export default class Rabbit {
   connection?: Connection;
@@ -21,21 +28,56 @@ export default class Rabbit {
   /**
    * Establish a connection and channel with the configured rabbit service.
    *
-   * Note: If already connected this will throw.
+   * Note: If already connected this will do nothing.
    */
-  public async connect() {
-    if (this.connection) {
-      throw new Error('Connection already open on this rabbit instance.');
+  public async connect(options?: IConnectOptions) {
+    const { retry = false, retryWait = 2000, timeoutMillis = undefined } =
+      options || {};
+    if (!this.connection) {
+      const { user, password, host, port } = this.options;
+      const rabbitUrl = `amqp://${user}:${password}@${host}:${port}`;
+      this.logger.info(
+        `Connecting to RabbitMQ @ amqp://${user}:***@${host}:${port}`,
+      );
+      const timeStarted = new Date().getTime();
+      let connected = false;
+      let first = true;
+      do {
+        try {
+          if (!first) {
+            this.logger.info(`Retrying connect after ${retryWait}ms`);
+            await wait(retryWait);
+          }
+          first = false;
+          this.connection = await amqp.connect(rabbitUrl);
+          connected = true;
+        } catch (err) {
+          this.logger.error(`Failed to connect to Rabbit`);
+        }
+      } while (
+        retry &&
+        (timeoutMillis === undefined ||
+          new Date().getTime() < timeStarted + timeoutMillis) &&
+        !connected
+      );
+      if (!this.connection) {
+        let error;
+        if (retry && timeoutMillis) {
+          error = `Failed to connect to RabbitMQ for ${timeoutMillis}ms, giving up`;
+        } else {
+          error = 'Failed to connect to RabbitMQ';
+        }
+        throw new Error(error);
+      } else {
+        this.logger.info('Connection to RabbitMQ established successfully');
+        this.channel = await this.connection.createConfirmChannel();
+        this.logger.info('RabbitMQ channel opened');
+      }
+    } else {
+      this.logger.warn(
+        'Attempting to connect to RabbitMQ when already connected',
+      );
     }
-    const { user, password, host, port } = this.options;
-    const rabbitUrl = `amqp://${user}:${password}@${host}:${port}`;
-    this.logger.info(
-      `Connecting to RabbitMQ @ amqp://${user}:***@${host}:${port}`,
-    );
-    this.connection = await amqp.connect(rabbitUrl);
-    this.logger.info('Connection to RabbitMQ established successfully');
-    this.channel = await this.connection.createConfirmChannel();
-    this.logger.info('RabbitMQ channel opened');
   }
 
   /**
@@ -82,7 +124,7 @@ export default class Rabbit {
           routingKey,
           Buffer.from(JSON.stringify(payload)),
           undefined,
-          err => {
+          (err) => {
             if (err) {
               reject(err);
             } else {
@@ -137,7 +179,7 @@ export default class Rabbit {
     await this.channel.bindQueue(createdQueue.queue, exchange, routingKey);
     const { consumerTag } = await this.channel.consume(
       createdQueue.queue,
-      message => {
+      (message) => {
         if (message) {
           const data = JSON.parse(message.content.toString());
           onMessage({

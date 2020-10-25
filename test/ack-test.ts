@@ -30,7 +30,7 @@ export default async function ackTest(rabbit: Rabbit) {
 
   await range(0, 10)
     .pipe(
-      map(num => ({
+      map((num) => ({
         text: `Test Message ${num}`,
       })),
       printObservable<ITestMessage>('Sent Message'),
@@ -43,7 +43,7 @@ export default async function ackTest(rabbit: Rabbit) {
 
   await range(0, 10)
     .pipe(
-      map(num => ({
+      map((num) => ({
         text: `Second Test Message ${num}`,
       })),
       printObservable<ITestMessage>('Sent Message'),
