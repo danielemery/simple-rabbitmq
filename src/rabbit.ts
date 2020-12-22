@@ -1,28 +1,30 @@
-import amqp, { Connection, ConfirmChannel } from 'amqplib';
-
-import IRabbitOptions from './rabbit-options';
 import ILogger from './logger';
 import ConsoleLogger from './console-logger';
 import { IQueueReference } from './queue-reference';
 import Envelope from './envelope';
 import IListenOptions from './listen-options';
-import { wait } from './wait';
 
-export interface IConnectOptions {
-  retry?: boolean;
-  retryWait?: number;
-  timeoutMillis?: number;
-}
+import publish from './operations/publish';
+import RabbitConnectionManager, {
+  IRabbitConnectionDetails,
+  IRetryOptions,
+} from './modules/RabbitConnectionManager';
 
 export default class Rabbit {
-  connection?: Connection;
-  channel?: ConfirmChannel;
-  options: IRabbitOptions;
   logger: ILogger;
+  connectionManager: RabbitConnectionManager;
 
-  constructor(options: IRabbitOptions, logger: ILogger = new ConsoleLogger()) {
-    this.options = options;
+  constructor(
+    connectionDetails: IRabbitConnectionDetails,
+    logger: ILogger = new ConsoleLogger(),
+    retryOptions: IRetryOptions = {},
+  ) {
     this.logger = logger;
+    this.connectionManager = new RabbitConnectionManager(
+      connectionDetails,
+      logger,
+      retryOptions,
+    );
   }
 
   /**
@@ -30,72 +32,15 @@ export default class Rabbit {
    *
    * Note: If already connected this will do nothing.
    */
-  public async connect(options?: IConnectOptions) {
-    const { retry = false, retryWait = 2000, timeoutMillis = undefined } =
-      options || {};
-    if (!this.connection) {
-      const { user, password, host, port } = this.options;
-      const rabbitUrl = `amqp://${user}:${password}@${host}:${port}`;
-      this.logger.info(
-        `Connecting to RabbitMQ @ amqp://${user}:***@${host}:${port}`,
-      );
-      const timeStarted = new Date().getTime();
-      let connected = false;
-      let first = true;
-      do {
-        try {
-          if (!first) {
-            this.logger.info(`Retrying connect after ${retryWait}ms`);
-            await wait(retryWait);
-          }
-          first = false;
-          this.connection = await amqp.connect(rabbitUrl);
-          connected = true;
-        } catch (err) {
-          this.logger.error(`Failed to connect to Rabbit`);
-        }
-      } while (
-        retry &&
-        (timeoutMillis === undefined ||
-          new Date().getTime() < timeStarted + timeoutMillis) &&
-        !connected
-      );
-      if (!this.connection) {
-        let error;
-        if (retry && timeoutMillis) {
-          error = `Failed to connect to RabbitMQ for ${timeoutMillis}ms, giving up`;
-        } else {
-          error = 'Failed to connect to RabbitMQ';
-        }
-        throw new Error(error);
-      } else {
-        this.logger.info('Connection to RabbitMQ established successfully');
-        this.channel = await this.connection.createConfirmChannel();
-        this.logger.info('RabbitMQ channel opened');
-      }
-    } else {
-      this.logger.warn(
-        'Attempting to connect to RabbitMQ when already connected',
-      );
-    }
+  public async connect() {
+    return this.connectionManager.connect();
   }
 
   /**
    * Disconnect from the connected rabbit service.
    */
   public async disconnect() {
-    try {
-      if (this.connection) {
-        await this.connection.close();
-        this.connection = undefined;
-        this.logger.info('RabbitMQ connection closed successfully');
-      } else {
-        this.logger.info('No open RabbitMQ connection to close');
-      }
-    } catch (e) {
-      this.logger.error('Error closing RabbitMQ connection and/or channel', e);
-      throw e;
-    }
+    return this.connectionManager.disconnect();
   }
 
   /**
@@ -111,32 +56,9 @@ export default class Rabbit {
     routingKey: string = '',
     payload: T,
   ): Promise<boolean> {
-    try {
-      return new Promise(async (resolve, reject) => {
-        if (!this.channel) {
-          throw new Error('No open rabbit connection!');
-        }
-        await this.channel.assertExchange(exchange, 'topic', {
-          durable: false,
-        });
-        this.channel.publish(
-          exchange,
-          routingKey,
-          Buffer.from(JSON.stringify(payload)),
-          undefined,
-          (err) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(true);
-            }
-          },
-        );
-      });
-    } catch (err) {
-      this.logger.error(err);
-      return false;
-    }
+    await this.connectionManager.waitUntilConnected();
+    const channel = this.connectionManager.getChannel();
+    return publish<T>(channel, exchange, routingKey, payload, this.logger);
   }
 
   /**
@@ -153,9 +75,8 @@ export default class Rabbit {
     onMessage: (message: Envelope<T>) => void,
     onClose: () => void,
   ): Promise<IQueueReference> {
-    if (!this.channel) {
-      throw new Error('No open rabbit connection!');
-    }
+    await this.connectionManager.waitUntilConnected();
+    const channel = this.connectionManager.getChannel();
     const {
       queue = '',
       routingKey = '',
@@ -172,12 +93,12 @@ export default class Rabbit {
       generated,
     });
 
-    await this.channel.assertExchange(exchange, 'topic', { durable: false });
-    const createdQueue = await this.channel.assertQueue(queue, {
+    await channel.assertExchange(exchange, 'topic', { durable: false });
+    const createdQueue = await channel.assertQueue(queue, {
       exclusive,
     });
-    await this.channel.bindQueue(createdQueue.queue, exchange, routingKey);
-    const { consumerTag } = await this.channel.consume(
+    await channel.bindQueue(createdQueue.queue, exchange, routingKey);
+    const { consumerTag } = await channel.consume(
       createdQueue.queue,
       (message) => {
         if (message) {
@@ -186,10 +107,10 @@ export default class Rabbit {
             message: data,
             acknowledge: requiresAcknowledge
               ? async () => {
-                  if (!this.channel) {
+                  if (!channel) {
                     throw new Error('No open rabbit connection!');
                   }
-                  await this.channel.ack(message);
+                  await channel.ack(message);
                 }
               : undefined,
           });
@@ -210,29 +131,26 @@ export default class Rabbit {
 
   /** Stop listening to the queue identified by the given reference. */
   public async unlisten(queue: IQueueReference) {
-    if (!this.channel) {
-      throw new Error('No open rabbit connection!');
-    }
+    await this.connectionManager.waitUntilConnected();
+    const channel = this.connectionManager.getChannel();
     if (queue.generated) {
-      await this.channel.deleteQueue(queue.name);
+      await channel.deleteQueue(queue.name);
     } else {
-      await this.channel.cancel(queue.consumerTag);
+      await channel.cancel(queue.consumerTag);
     }
   }
 
   /** Delete the exchange with the given name. */
   public async deleteExchange(exchange: string) {
-    if (!this.channel) {
-      throw new Error('No open rabbit connection!');
-    }
-    await this.channel.deleteExchange(exchange);
+    await this.connectionManager.waitUntilConnected();
+    const channel = this.connectionManager.getChannel();
+    await channel.deleteExchange(exchange);
   }
 
   /** Delete the queue with the given name. */
   public async deleteQueue(queue: string) {
-    if (!this.channel) {
-      throw new Error('No open rabbit connection!');
-    }
-    await this.channel.deleteQueue(queue);
+    await this.connectionManager.waitUntilConnected();
+    const channel = this.connectionManager.getChannel();
+    await channel.deleteQueue(queue);
   }
 }
