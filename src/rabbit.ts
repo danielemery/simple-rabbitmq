@@ -134,7 +134,7 @@ export default class Rabbit {
         );
       });
     } catch (err) {
-      this.logger.error(err);
+      this.logger.error('Unexpected error publishing message', err);
       return false;
     }
   }
